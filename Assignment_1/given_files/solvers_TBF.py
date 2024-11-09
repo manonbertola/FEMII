@@ -185,9 +185,9 @@ class _Load(_Constraint):
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
-        g = ...
-        h = ...
-        s = ...
+        g = llambda - (llambda0+deltaS)
+        h = np.zeros_like(u0)
+        s = 1
 
         return g, h, s
 
@@ -205,11 +205,12 @@ class _Displacement(_Constraint):
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
         if T is None:
-            T = ...
+            T = np.zeros_like(u)
+            T[5]=1
 
-        g = ...
-        h = ...
-        s = ...
+        g = np.dot(T , u) - (np.dot(u0, T)+deltaS)
+        h = T
+        s = 0
 
         return g, h, s
 
@@ -226,21 +227,29 @@ class _Riks(_Constraint):
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
-        g = ...
-        h = ...
-        s = ...
+        u1 = u0 + deltalambdap * deltaUp
+        lambda1 = llambda0 + deltalambdap
+
+        g = np.dot(deltaUp, (u-u1)) +deltalambdap(llambda- lambda1)
+        h = deltaUp
+        s = deltalambdap
 
         return g, h, s
 
     def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
+        u_tilde = np.linalg.inv(StiffnessK) @ fext
+        u_doubletilde = -np.linalg.inv(StiffnessK) @ Residualsr
+        
+        #where do we get g, h, s from 
+        deltalambda = -(g + np.dot(h, u_doubletilde))/(s + np.dot(h, u_tilde))
+        deltau = deltalambda * u_tilde + u_doubletilde
 
-        deltaUp = ...
-        deltalambdap = ...
+        kappa = np.dot(fext, deltau)/np.dot(deltau, deltau)
+        deltaUp = np.linalg.inv(StiffnessK) @ fext
+        deltalambdap = np.sign(kappa) * deltaS/np.linalg.norm(deltaUp)
 
-        if ... < 0:
-            deltalambdap ...
 
-        u, llambda = ...
+        u, llambda = ... #???
         StiffnessK, fext, Residualsr = func(u, llambda)
 
         return u, llambda, deltaUp, deltalambdap, StiffnessK, fext, Residualsr
@@ -252,21 +261,27 @@ class _Arc(_Constraint):
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
-        g = ...
-        h = ...
-        s = ...
+        g = np.sqrt(np.dot((u-u0), (u-u0)) + (llambda-llambda0)^2 )-deltaS
+        h = (u-u0)/g
+        s = (llambda-llambda0)/g
 
         return g, h, s
 
     def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
+        u_tilde = np.linalg.inv(StiffnessK) @ fext
+        u_doubletilde = -np.linalg.inv(StiffnessK) @ Residualsr
+        
+        g, h, s = get(u, llambda, u0, llambda0, deltaUp=0, deltalambdap=0, deltaS=0, T=None) #?? don't know if this is from the right iteration
 
-        deltaUp = ...
-        deltalambdap = ...
+        deltalambda = -(g + np.dot(h, u_doubletilde))/(s + np.dot(h, u_tilde))
+        deltau = deltalambda * u_tilde + u_doubletilde
 
-        if ... < 0:
-            deltalambdap ...
+        kappa = np.dot(fext, deltau)/np.dot(deltau, deltau)
 
-        u, llambda = ...
+        deltaUp = np.linalg.inv(StiffnessK) @ fext
+        deltalambdap = deltalambdap = np.sign(kappa) * deltaS/np.linalg.norm(deltaUp)
+
+        u, llambda = 0,0 #???
         StiffnessK, fext, Residualsr = func(u, llambda)
 
         return u, llambda, deltaUp, deltalambdap, StiffnessK, fext, Residualsr
@@ -465,7 +480,7 @@ class Static:
         """
 
         Stiffness_K, fext, ResidualsR = model.getSystemMatrices(u0, lambda0)
-        convergence_norm = ...
+        convergence_norm = np.linalg.norm(ResidualsR)
 
         # Calculate the system prediction
         (
@@ -494,12 +509,16 @@ class Static:
             )
 
             # Calculate the solution contributions
-            du_tilde = ...
-            du_double_tilde = ...
+            du_tilde = np.linalg.inv(Stiffness_K)@fext
+            du_double_tilde = -np.linalg.inv(Stiffness_K)@ResidualsR
 
             # Calculate the solution increments
-            deltalambdap = ...
-            deltaUp = ...
+            deltalambda=-(g+h.T@du_double_tilde)/(s+h.T@du_tilde)
+            du=deltalambda*du_tilde+du_double_tilde
+            deltaUp = np.linalg.inv(Stiffness_K)@fext
+            kappa=(fext.T@du)/(du.T@du)
+            deltalambdap = np.sign(kappa)*increment/np.linalg.norm(deltaUp)
+            
 
             # Update the solution variables
             u, llambda = u + deltaUp, llambda + deltalambdap
@@ -508,7 +527,8 @@ class Static:
             Stiffness_K, fext, ResidualsR = model.getSystemMatrices(u, llambda)
 
             # Check convergence criteria
-            if ... <= self.__tolerance * ...:
+            #if ... <= self.__tolerance * ...:
+            if np.linalg <= self.__tolerance * 1:
                 message = "    Solution converged after {} iterations\n"
                 sys.stdout.write(message.format(iteration + 1))
 
@@ -520,12 +540,12 @@ class Static:
 
         else:
 
-        message = "    Failed to reach convergence after {} iterations\n"
-        sys.stdout.write(message.format(iteration + 1))
+            message = "    Failed to reach convergence after {} iterations\n"
+            sys.stdout.write(message.format(iteration + 1))
 
-        message = "    Residual norm {:.3e}\n"
-        sys.stdout.write(message.format(np.linalg.norm(ResidualsR)))
+            message = "    Residual norm {:.3e}\n"
+            sys.stdout.write(message.format(np.linalg.norm(ResidualsR)))
 
-        convergence_boolean = False
+            convergence_boolean = False
 
         return u, llambda, convergence_boolean

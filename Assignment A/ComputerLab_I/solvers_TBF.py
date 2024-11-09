@@ -184,7 +184,9 @@ class _Load(_Constraint):
     name = "Load control"
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
-
+        #g = ...
+        #h = ...
+        #s = ...
         g = ...
         h = ...
         s = ...
@@ -205,7 +207,12 @@ class _Displacement(_Constraint):
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
         if T is None:
+            #T = ...
             T = ...
+
+        #g = ...
+        #h = ...
+        #s = ...
 
         g = ...
         h = ...
@@ -226,6 +233,10 @@ class _Riks(_Constraint):
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
+        #g = ...
+        #h = ...
+        #s = ...
+
         g = ...
         h = ...
         s = ...
@@ -234,11 +245,19 @@ class _Riks(_Constraint):
 
     def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
 
+        #deltaUp = ...
+        #deltalambdap = ...
+
+        #if ... < 0:
+            #deltalambdap = ...
+
+        #u, llambda = ...
+        
         deltaUp = ...
         deltalambdap = ...
 
         if ... < 0:
-            deltalambdap ...
+            deltalambdap = ...
 
         u, llambda = ...
         StiffnessK, fext, Residualsr = func(u, llambda)
@@ -252,6 +271,10 @@ class _Arc(_Constraint):
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
+        #g = ...
+        #h = ...
+        #s = ...
+
         g = ...
         h = ...
         s = ...
@@ -260,11 +283,19 @@ class _Arc(_Constraint):
 
     def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
 
+        #deltaUp = ...
+        #deltalambdap = ...
+
+        #if ... < 0:
+            #deltalambdap = ...
+
+        #u, llambda = ...
+        
         deltaUp = ...
         deltalambdap = ...
 
         if ... < 0:
-            deltalambdap ...
+            deltalambdap = ...
 
         u, llambda = ...
         StiffnessK, fext, Residualsr = func(u, llambda)
@@ -383,7 +414,7 @@ class Static:
 
         self.__iterations = iterations
 
-    def solve(self, model, increments_length):
+    def solve1(self, model, increments_length):
 
         """
         Solve the system for a prescribed number of increments.
@@ -438,6 +469,62 @@ class Static:
             lambda_history[step + 1] = llambda
 
         return u_history, lambda_history
+    
+        def solve(self, model, increments_length):
+                """
+                Solve the system for a prescribed number of increments.
+
+                Parameters
+                ----------
+                model: Model
+                        The finite element model instance.
+                increments_length: ndarray
+                        The sequence of increments.
+                """
+
+                model.make()
+                lambda_history = np.zeros(increments_length.shape[0] + 1)
+                u_history = np.zeros(increments_length.shape[0] + 1)
+
+                for step in range(len(increments_length)):
+
+                        attempt = 1
+                        convergence_boolean = False
+
+                        # displacement and load at the beginning of the step
+                        u0, lambda0 = model.getState()
+
+                        # Step progress message
+                        print(f"Step {step + 1}")
+
+                        while not convergence_boolean and attempt <= self.__attempts:
+
+                        # Attempt progress message
+                        print(f"  Attempt {attempt}")
+
+                        # Call the solution function to get u, lambda, and convergence status
+                        u, llambda, convergence_boolean = self._getSolution(
+                                model, u0, lambda0, increments_length[step]
+                        )
+
+                        attempt += 1
+
+                        # If not converged, reduce the increment and try again
+                        if not convergence_boolean and attempt <= self.__attempts:
+                                message = f"    Reducing increment from {increments_length[step]:.3e} to {0.5 * increments_length[step]:.3e}\n"
+                                print(message)
+                                increments_length[step] *= 0.5
+
+                        # If convergence was not achieved, output failure message
+                        if not convergence_boolean:
+                        print(f"    Failed to reach convergence after {attempt - 1} attempts\n")
+
+                        # Store the solution progress
+                        u_history[step + 1] = np.linalg.norm(u)
+                        lambda_history[step + 1] = llambda
+
+                return u_history, lambda_history
+
 
     def _getSolution(self, model, u0, lambda0, increment):
 
@@ -465,6 +552,7 @@ class Static:
         """
 
         Stiffness_K, fext, ResidualsR = model.getSystemMatrices(u0, lambda0)
+        #convergence_norm = ...
         convergence_norm = ...
 
         # Calculate the system prediction
@@ -496,10 +584,14 @@ class Static:
             # Calculate the solution contributions
             du_tilde = ...
             du_double_tilde = ...
+            #du_tilde = ...
+            #du_double_tilde = ...
 
             # Calculate the solution increments
             deltalambdap = ...
             deltaUp = ...
+            #deltalambdap = ...
+            #deltaUp = ...
 
             # Update the solution variables
             u, llambda = u + deltaUp, llambda + deltalambdap
@@ -508,6 +600,7 @@ class Static:
             Stiffness_K, fext, ResidualsR = model.getSystemMatrices(u, llambda)
 
             # Check convergence criteria
+            #if ... <= self.__tolerance * ...:
             if ... <= self.__tolerance * ...:
                 message = "    Solution converged after {} iterations\n"
                 sys.stdout.write(message.format(iteration + 1))
@@ -520,12 +613,12 @@ class Static:
 
         else:
 
-        message = "    Failed to reach convergence after {} iterations\n"
-        sys.stdout.write(message.format(iteration + 1))
+            message = "    Failed to reach convergence after {} iterations\n"
+            sys.stdout.write(message.format(iteration + 1))
 
-        message = "    Residual norm {:.3e}\n"
-        sys.stdout.write(message.format(np.linalg.norm(ResidualsR)))
+            message = "    Residual norm {:.3e}\n"
+            sys.stdout.write(message.format(np.linalg.norm(ResidualsR)))
 
-        convergence_boolean = False
+            convergence_boolean = False
 
         return u, llambda, convergence_boolean
