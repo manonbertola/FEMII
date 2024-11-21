@@ -24,6 +24,8 @@ class Element:
 
     Methods
     -------
+    setHistory(self, stress, kappa, tangentC, yielded):
+        Set the material history parameters and variables
     getStiffnessAndResidual(self, coordinates, displacements):
         Get the (tangent) stiffness matrix and the internal (residual) forces
     getDegreesOfFreedom(self, dofs, nodes):
@@ -36,10 +38,34 @@ class Element:
         self.material = material
         self.section = section
 
+        self.history = {}
+        self.setHistory(np.zeros(2), np.zeros(2), np.zeros(2), np.zeros(2))
+
+
+    def setHistory(self, stress, kappa, tangentC, yielded):
+        """
+        Set the material history parameters and variables by updating the instance
+
+        Parameters
+        ----------
+        stress: ndarray
+            The stress vector
+        kappa: ndarray
+            The hardening parameter
+        tangentC: ndarray
+            The tangent constitutive matrix
+        yielded: Boolean
+            Variable indicating if yielding has occured
+        """
+        self.history['stress'] = stress
+        self.history['kappa'] = kappa
+        self.history['tangent'] = tangentC
+        self.history['yielded'] = yielded
+
 
     def getStiffnessAndResidual(self, coordinates, displacements):
         """
-        Gets the (tangent) stiffness matrix and the internal (residual) forces
+        Get the (tangent) stiffness matrix and the internal (residual) forces and updates the material history dictionary
 
         Parameters
         ----------
@@ -47,7 +73,7 @@ class Element:
             Array of nodal coordinates
         displacements: ndarray
             Array containing the displacements of each node
-
+    
         Returns
         ----------
         K: ndarray
@@ -55,9 +81,6 @@ class Element:
         R: ndarray
             The internal (residual) forces
         """
-
-        dX = coordinates[1, :] - coordinates[0, :]
-        dx = dX + displacements[1, :] - displacements[0, :]
 
         try: 
             E = self.material.E
@@ -69,26 +92,50 @@ class Element:
         except AttributeError:
             raise AttributeError('undefined cross-section properties')
 
-        l = np.linalg.norm(dx)
+        dX = coordinates[1, :] - coordinates[0, :]
         L = np.linalg.norm(dX)
-        theta = np.arctan2(dx[1], dx[0])
+        theta = np.arctan2(dX[1], dX[0])
 
-        Kl = E*A*l**2/L**3*np.array([
-            [np.cos(theta)**2, np.cos(theta)*np.sin(theta), -np.cos(theta)**2, -np.cos(theta)*np.sin(theta)],
-            [np.cos(theta)*np.sin(theta), np.sin(theta)**2, -np.cos(theta)*np.sin(theta), -np.sin(theta)**2],
-            [-np.cos(theta)**2, -np.cos(theta)*np.sin(theta), np.cos(theta)**2, np.cos(theta)*np.sin(theta)],
-            [-np.cos(theta)*np.sin(theta), -np.sin(theta)**2, np.cos(theta)*np.sin(theta), np.sin(theta)**2]
+        T = np.array([
+            [ np.cos(theta), np.sin(theta), 0, 0],
+            [-np.sin(theta), np.cos(theta), 0, 0],
+            [0, 0,  np.cos(theta), np.sin(theta)],
+            [0, 0, -np.sin(theta), np.cos(theta)]
             ])
 
-        P = E*A*(l**2-L**2)/(2*L**2)
-        Knl = P/L*np.array([
-            [ 1,  0, -1,  0], 
-            [ 0,  1,  0, -1], 
-            [-1,  0,  1,  0], 
-            [ 0, -1,  0,  1]])
-        K = Kl+Knl
+        det = L/2
+        du = T.dot(displacements.flatten())
 
-        R = P*np.array([-np.cos(theta), -np.sin(theta), np.cos(theta), np.sin(theta)])
+        weights = np.array([1, 1])
+        points = np.array([-1/np.sqrt(3), 1/np.sqrt(3)])
+
+        B = np.array([[-1, 0, 1, 0]])
+        K = np.zeros((4, 4))
+        R = np.zeros(4)
+
+        for j, (point, weight) in enumerate(zip(points, weights)):
+
+            # Incremental strain
+            depsilon = B.dot(du)
+
+            # Retrieve element history
+            stress, kappa = self.history['stress'][j], self.history['kappa'][j]
+
+            # Call the return mapping
+            stress, kappa, tangent, yielded = self.material.getStressAndTangent(stress, kappa, depsilon)
+
+            # Update tangent stiffness and residual
+            K = K + weight*B.T.dot(tangent).dot(B)*A*det
+            R = R + weight*B.T.dot(stress)*A*det
+
+            # Update history
+            self.history['stress'][j] = stress
+            self.history['kappa'][j] = kappa
+            self.history['tangent'][j] = tangent
+            self.history['yielded'][j] = yielded
+
+        K = T.T.dot(K).dot(T)
+        R = T.T.dot(R)
 
         return K, R
 

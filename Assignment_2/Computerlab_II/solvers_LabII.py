@@ -185,10 +185,6 @@ class _Load(_Constraint):
 
     def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
 
-        # g = ...
-        # h = ...
-        # s = ...
-
         g = llambda - (llambda0 + deltaS)
         h = np.zeros_like(u)
         s = 1
@@ -198,102 +194,6 @@ class _Load(_Constraint):
     def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
 
         deltaUp, deltalambdap = np.zeros_like(u), 0
-
-        return u, llambda, deltaUp, deltalambdap, StiffnessK, fext, Residualsr
-
-
-class _Displacement(_Constraint):
-
-    name = "Displacement control"
-
-    def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
-
-        if T is None:
-        #     T = ...
-
-            T = np.zeros_like(u)
-            T[5] = 1 #More in the middle
-
-        # g = ...
-        # h = ...
-        # s = ...
-        
-        g = np.dot(T, u) - (np.dot(T, u0) + deltaS)
-        h = T
-        s = 0
-
-        return g, h, s
-
-    def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
-
-        deltaUp, deltalambdap = np.zeros_like(u), 0
-
-        return u, llambda, deltaUp, deltalambdap, StiffnessK, fext, Residualsr
-
-
-class _Riks(_Constraint):
-
-    name = "Riks"
-
-    def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
-
-        # g = ...
-        # h = ...
-        # s = ...
-
-        u1 = u0 + deltalambdap * deltaUp
-        llambda1 = llambda0 + deltalambdap
-        
-        g = deltaUp.T @ (u - u1) + deltalambdap * (llambda - llambda1)
-        h = deltaUp
-        s = deltalambdap
-
-        return g, h, s
-
-    def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
-
-        # deltaUp = ...
-        # deltalambdap = ...
-
-        deltaUp = np.linalg.inv(StiffnessK) @ fext
-        deltalambdap = deltaS/np.linalg.norm(deltaUp)
-
-        # if ... < 0:
-        #     deltalambdap ...
-
-        if ((fext.T @ deltaUp)/(deltaUp.T @ deltaUp)) < 0: #here comes the kappa
-            deltalambdap = - deltalambdap
-
-        # u, llambda = ...
-
-        u, llambda = u + deltalambdap * deltaUp, llambda + deltalambdap
-        StiffnessK, fext, Residualsr = func(u, llambda)
-
-        return u, llambda, deltaUp, deltalambdap, StiffnessK, fext, Residualsr
-
-
-class _Arc(_Constraint):
-
-    name = "Arc-length"
-
-    def get(self, u, llambda, u0, llambda0, deltaUp, deltalambdap, deltaS, T=None):
-
-        g = np.sqrt(np.dot((u - u0).T, (u - u0)) + (llambda - llambda0)**2) - deltaS
-        h = (u - u0)/g
-        s = (llambda - llambda0)/g
-
-        return g, h, s
-
-    def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
-
-        deltaUp = np.linalg.inv(StiffnessK) @ fext
-        deltalambdap = deltaS/np.linalg.norm(deltaUp)
-
-        if ((fext.T @ deltaUp)/(deltaUp.T @ deltaUp)) < 0:
-            deltalambdap * (-1)
-
-        u, llambda = u + deltalambdap * deltaUp, llambda + deltalambdap
-        StiffnessK, fext, Residualsr = func(u, llambda)
 
         return u, llambda, deltaUp, deltalambdap, StiffnessK, fext, Residualsr
 
@@ -425,7 +325,7 @@ class Static:
         model.make()
         lambda_history = np.zeros(increments_length.shape[0] + 1)
         u_history = np.zeros(increments_length.shape[0] + 1)
-
+        
         for step in tqdm.tqdm_notebook(range(len(increments_length))):
 
             attempt = 1
@@ -460,7 +360,7 @@ class Static:
                 message = "    Failed to reach convergence after {} attempts\n"
                 sys.stdout.write(message.format(step, attempt))
 
-            u_history[step + 1] = np.linalg.norm(u)
+            u_history[step + 1] = u[2]
             lambda_history[step + 1] = llambda
 
         return u_history, lambda_history
@@ -491,9 +391,8 @@ class Static:
         """
 
         Stiffness_K, fext, ResidualsR = model.getSystemMatrices(u0, lambda0)
-        # convergence_norm = ...
-
-        convergence_norm = 1.0
+        model.UpdateHistory()
+        convergence_norm = np.linalg.norm(fext)
 
         # Calculate the system prediction
         (
@@ -522,17 +421,11 @@ class Static:
             )
 
             # Calculate the solution contributions
-        #     du_tilde = ...
-        #     du_double_tilde = ...
-
-            du_tilde = np.linalg.inv(Stiffness_K) @ fext
-            du_double_tilde = - np.linalg.inv(Stiffness_K) @ ResidualsR
+            du_tilde = np.linalg.solve(Stiffness_K, fext)
+            du_double_tilde = -np.linalg.solve(Stiffness_K, ResidualsR)
 
             # Calculate the solution increments
-        #     deltalambdap = ...
-        #     deltaUp = ...
-        
-            deltalambdap = - ((g + h.T @ du_double_tilde)/(s + h.T @ du_tilde))
+            deltalambdap = -(g + h.T.dot(du_double_tilde)) / (s + h.T.dot(du_tilde))
             deltaUp = deltalambdap * du_tilde + du_double_tilde
 
             # Update the solution variables
@@ -542,8 +435,6 @@ class Static:
             Stiffness_K, fext, ResidualsR = model.getSystemMatrices(u, llambda)
 
             # Check convergence criteria
-        #     if ... <= self.__tolerance * ...:
-
             if np.linalg.norm(ResidualsR) <= self.__tolerance * convergence_norm:
                 message = "    Solution converged after {} iterations\n"
                 sys.stdout.write(message.format(iteration + 1))
@@ -552,6 +443,7 @@ class Static:
                 sys.stdout.write(message.format(np.linalg.norm(ResidualsR)))
 
                 convergence_boolean = True
+                model.UpdateHistory()
                 break
 
         else:
