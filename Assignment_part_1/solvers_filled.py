@@ -245,7 +245,7 @@ class _Riks(_Constraint):
         u1 = u0 + deltalambdap * deltaUp
         llambda1 = llambda0 + deltalambdap
         
-        g = deltaUp.T @ (u - u1) + deltalambdap * (llambda - llambda1)
+        g = np.dot(deltaUp.T , (u - u1)) + deltalambdap * (llambda - llambda1)
         h = deltaUp
         s = deltalambdap
 
@@ -256,13 +256,13 @@ class _Riks(_Constraint):
         # deltaUp = ...
         # deltalambdap = ...
 
-        deltaUp = np.linalg.inv(StiffnessK) @ fext
+        deltaUp = np.linalg.solve(StiffnessK, fext)
         deltalambdap = deltaS/np.linalg.norm(deltaUp)
 
         # if ... < 0:
         #     deltalambdap ...
 
-        if ((fext.T @ deltaUp)/(deltaUp.T @ deltaUp)) < 0: #here comes the kappa
+        if (np.dot(fext.T , deltaUp)/np.dot(deltaUp.T , deltaUp)) < 0: #here comes the kappa
             deltalambdap = - deltalambdap
 
         # u, llambda = ...
@@ -287,10 +287,10 @@ class _Arc(_Constraint):
 
     def predict(self, func, u, llambda, deltaS, StiffnessK, fext, Residualsr):
 
-        deltaUp = np.linalg.inv(StiffnessK) @ fext
+        deltaUp = np.linalg.solve(StiffnessK, fext)
         deltalambdap = deltaS/np.linalg.norm(deltaUp)
 
-        if ((fext.T @ deltaUp)/(deltaUp.T @ deltaUp)) < 0:
+        if (np.dot(fext.T , deltaUp)/np.dot(deltaUp.T , deltaUp)) < 0:
             deltalambdap * (-1)
 
         u, llambda = u + deltalambdap * deltaUp, llambda + deltalambdap

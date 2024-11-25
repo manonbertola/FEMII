@@ -476,6 +476,14 @@ class Material:
         """
         # TO DO (2.2.1) Compute the effective Von Mises stress
         #VMstress = ...
+        #need to modify for plane stress
+        #P = np.array([[ 2/3, -1/3, -1/3,   0,   0,   0],
+                      #[-1/3,  2/3, -1/3,   0,   0,   0],
+                      #[-1/3, -1/3,  2/3,   0,   0,   0],
+                      #[   0,    0,    0,   2,   0,   0],
+                      #[   0,    0,    0,   0,   2,   0],
+                      #[   0,    0,    0,   0,   0,   2],
+                      #])
         P = np.array([[ 2/3, -1/3, -1/3,   0,   0,   0],
                       [-1/3,  2/3, -1/3,   0,   0,   0],
                       [-1/3, -1/3,    0,   0,   0,   0],
@@ -483,14 +491,14 @@ class Material:
                       [   0,    0,    0,   0,   0,   0],
                       [   0,    0,    0,   0,   0,   0],
                       ])
-        VMstress = np.sqrt(1.5 * stress.T @ P @ stress)
+        VMstress = np.sqrt(1.5 * np.dot(np.dot(stress.T , P ), stress)) #scalar
 
         # TO DO (2.2.2) Compute the vector normal to the yield surface
         #m = ...
-        m = 3 * P @ stress / (2*VMstress)
+        m = 3 * np.dot(P , stress) / (2*VMstress) #6x1
         
          # TO DO (2.2.2) Compute the derivative of the normal vector
-        dm = (6 * P * VMstress - 6 * P @ stress @ m) / (4 * VMstress)
+        dm = (6 * P * VMstress - 6 * np.dot(np.dot(P , stress) , m.T)) / (4 * VMstress) #6x6 not sure if m needs transpose
         #dm = ...
 
         return m,dm
@@ -570,7 +578,24 @@ class Material:
             while np.linalg.norm(residuals) > tolerance_residual*self.yields and counter < maxit:
                 # TO DO (2.3.9): Construct Jacobian matrix
                 jacobian = np.zeros((5,5))
-                I = np.array([[1,1,1,0,0,0]])
+                I = np.array([[1,0,0],
+                              [0,1,0],
+                              [0,0,1]]
+                            )
+                #stress derivation matrix
+                jacobian[:2,:2]=I+np.dot(De, dm) 
+                jacobian[0,0]=0
+                jacobian[0,1]=0
+                jacobian[0,2]=0
+                jacobian[1,0]=0
+                jacobian[1,1]=0
+                jacobian[1,2]=0
+                jacobian[2,0]=0
+                jacobian[2,1]=0
+                jacobian[2,2]=0
+
+
+
                 jacobian = np.array([[I + De_flat @ dm * deltaLambda_upd, De_flat * (-self.Hhardening) * deltaLambda_upd, De_flat @ m],
                                      []])
                 

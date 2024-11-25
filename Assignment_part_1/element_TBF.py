@@ -97,10 +97,10 @@ class Quad4:
             # TO DO (1.4.3): Calculate the Second Piola-Kirchoff stress
             S_vector = C.dot(Egreenlagrance).flatten()
             S_matrix = np.array([
-                        [S_vector[0], 0, 0, 0],
-                        [0, S_vector[2], 0, 0],
-                        [0, 0, S_vector[2], 0],
-                        [0, 0, 0, S_vector[1]]
+                        [S_vector[0], S_vector[2], 0, 0],
+                        [S_vector[2], S_vector[1], 0, 0],
+                        [0, 0, S_vector[0], S_vector[2]],
+                        [0, 0, S_vector[2], S_vector[1]]
                     ])
             #S_matrix = ...
 
