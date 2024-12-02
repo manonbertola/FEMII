@@ -443,14 +443,11 @@ class Material:
                       #[   0,    0,    0,   0,   2,   0],
                       #[   0,    0,    0,   0,   0,   2],
                       #])
-        P = np.array([[ 2/3, -1/3, -1/3,   0,   0,   0],
-                      [-1/3,  2/3, -1/3,   0,   0,   0],
-                      [-1/3, -1/3,    0,   0,   0,   0],
-                      [   0,    0,    0,   2,   0,   0],
-                      [   0,    0,    0,   0,   0,   0],
-                      [   0,    0,    0,   0,   0,   0],
+        P = np.array([[ 2/3, -1/3,   0],
+                      [-1/3,  2/3,   0],
+                      [   0,    0,   2],
                       ])
-        VMstress = np.sqrt(1.5 * stress.T @ P @ stress)
+        VMstress = np.sqrt(1.5 * stress.T.dot(P.dot(stress)))
         #VMstress = ...
 
         # TO DO (2.1.2) Evaluate the yield function
@@ -484,21 +481,18 @@ class Material:
                       #[   0,    0,    0,   0,   2,   0],
                       #[   0,    0,    0,   0,   0,   2],
                       #])
-        P = np.array([[ 2/3, -1/3, -1/3,   0,   0,   0],
-                      [-1/3,  2/3, -1/3,   0,   0,   0],
-                      [-1/3, -1/3,    0,   0,   0,   0],
-                      [   0,    0,    0,   2,   0,   0],
-                      [   0,    0,    0,   0,   0,   0],
-                      [   0,    0,    0,   0,   0,   0],
+        P = np.array([[ 2/3, -1/3,   0],
+                      [-1/3,  2/3,   0],
+                      [   0,    0,   2],
                       ])
-        VMstress = np.sqrt(1.5 * np.dot(np.dot(stress.T , P ), stress)) #scalar
+        VMstress = np.sqrt(1.5 * (stress.T).dot(P).dot(stress)) #scalar
 
         # TO DO (2.2.2) Compute the vector normal to the yield surface
         #m = ...
-        m = 3 * np.dot(P , stress) / (2*VMstress) #6x1
+        m = (3 * P.dot(stress)) / (2*VMstress) #3x1
         
          # TO DO (2.2.2) Compute the derivative of the normal vector
-        dm = (6 * P * VMstress - 6 * np.dot(np.dot(P , stress) , m.T)) / (4 * VMstress) #6x6 not sure if m needs transpose
+        dm = (6*P*VMstress - 6*P.dot(stress).dot(m))/(4*VMstress*VMstress) #3x3 
         #dm = ...
 
         return m,dm
@@ -539,9 +533,7 @@ class Material:
 
         # TO DO (2.3.1) Stress estimation employing the elastic predictor
         #elastic_stress_prediction = ...
-        # need to flatten De somehow here i think, unless stress here is 3x3
-        De_flat = np.array([[De[0,0], De[1,1], De[2,2], De[0,1], De[0,2], De[1,2]]])
-        elastic_stress_prediction = stress + De_flat @ depsilon
+        elastic_stress_prediction = stress + De.dot(depsilon)
         # TO DO (2.3.2) Evaluate yield function at estimation
         yfunction = self.getYieldFunction(elastic_stress_prediction, kappa)
         #yfunction = ...
@@ -565,7 +557,7 @@ class Material:
             deltaLambda_upd = 0
 
             # TO DO (2.3.6): Calculate stress and hardening residuals
-            epsilon_s = np.linalg.norm(stress - elastic_stress_prediction + De_flat @ m * deltaLambda_upd) #should this be a scalar?
+            epsilon_s = stress - elastic_stress_prediction + De.dot(m) * deltaLambda_upd #should this be a scalar?
             epsilon_k = kappa_upd - kappa - deltaLambda_upd * p
 
             # TO DO (2.3.7): Evaluate yield function
@@ -575,53 +567,49 @@ class Material:
 
             maxit, counter = 50, 0
 
-            while np.linalg.norm(residuals) > tolerance_residual*self.yields and counter < maxit:
+            while np.linalg.norm(residuals) > tolerance_residual*self.yield_stress and counter < maxit:
                 # TO DO (2.3.9): Construct Jacobian matrix
                 jacobian = np.zeros((5,5))
-                I = np.array([[1,0,0],
-                              [0,1,0],
-                              [0,0,1]]
-                            )
+                I = np.eye(3)
                 #stress derivation matrix
-                jacobian[:2,:2]=I+np.dot(De, dm) 
-                jacobian[0,0]=0
-                jacobian[0,1]=0
-                jacobian[0,2]=0
-                jacobian[1,0]=0
-                jacobian[1,1]=0
-                jacobian[1,2]=0
-                jacobian[2,0]=0
-                jacobian[2,1]=0
-                jacobian[2,2]=0
+                dm_over_dkappa = np.zeros(3)
+                dp_over_dkappa = 0
+                dp_over_dsigma = np.zeros(3)
+                df_over_dkappa = -self.Hhardening
 
+                jacobian[:3 , :3] = I + De.dot(dm) * deltaLambda_upd
+                jacobian[:3 ,  3] = 0
+                jacobian[:3 ,  4] = De.dot(m)
+                jacobian[3  , :3] = -dp_over_dsigma * deltaLambda_upd
+                jacobian[4  , :3] = m
+                jacobian[3  ,  3] = 1 - dp_over_dkappa
+                jacobian[3  ,  4] = -p
+                jacobian[4  ,  3] = df_over_dkappa
+                jacobian[4  ,  4] = 0
 
-
-                jacobian = np.array([[I + De_flat @ dm * deltaLambda_upd, De_flat * (-self.Hhardening) * deltaLambda_upd, De_flat @ m],
-                                     []])
-                
                 # TO DO (2.3.10): Compute incremental values
-                delta_unknowns = ...
+                delta_unknowns = np.linalg.inv(jacobian).dot(residuals)
                 # TO DO (2.3.11): Update quantities
-                stress_upd = ...
-                kappa_upd = ...
-                deltaLambda_upd = ...
+                stress_upd = stress_upd - delta_unknowns[:3]
+                kappa_upd = kappa_upd - delta_unknowns[3]
+                deltaLambda_upd = deltaLambda_upd - delta_unknowns[4]
 
 
                 # TO DO (2.3.12) Update normal vector
-                m, dm = self.getNormalVector(...)
+                m, dm = self.getNormalVector(stress_upd)
 
                 # TO DO (2.3.13) Update residuals based on computed values
-                epsilon_s = ...
-                epsilon_k = ...
+                epsilon_s = stress_upd - elastic_stress_prediction +De.dot(m)*deltaLambda_upd
+                epsilon_k = kappa_upd - kappa - deltaLambda_upd*p
                 # TO DO (2.3.14) Evaluate yield function at updated prediction
-                epsilon_f = self.getYieldFunction(...)
+                epsilon_f = self.getYieldFunction(stress_upd, kappa_upd)
                 # TO DO (2.3.15): Update residual vector
-                residuals = np.hstack((...))
+                residuals = np.hstack(([epsilon_s, epsilon_k, epsilon_f]))
             
                 counter = counter + 1
 
             # TO DO (2.3.16): Update tangent constitutive matrix
-            tangentC = ...
+            tangentC = np.linalg.inv( np.linalg.inv(De) + deltaLambda_upd*dm + 1/p*np.cross(m,m))
             yielded = True
 
         return stress_upd, kappa_upd, tangentC, yielded
